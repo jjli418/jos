@@ -44,20 +44,14 @@ _start:
 	# Establish our own GDT in place of the boot loader's temporary GDT.
 	lgdt	RELOC(mygdtdesc)		# load descriptor table
 
-
 	# Immediately reload all segment registers (including CS!)
 	# with segment selectors from the new GDT.
 	movl	$DATA_SEL, %eax			# Data segment selector
 	movw	%ax,%ds				# -> DS: Data Segment
 	movw	%ax,%es				# -> ES: Extra Segment
 	movw	%ax,%ss				# -> SS: Stack Segment
-
-
 	ljmp	$CODE_SEL,$relocated		# reload CS by jumping
 relocated:
-	mov	pos, %eax
-	add     $KERNBASE, %eax
-	mov	%eax, pos
 
 	# Clear the frame pointer register (EBP)
 	# so that once we get into debugging C code,
@@ -68,12 +62,8 @@ relocated:
 	# XXX use sizeof(.)
 	movl	$(bootstacktop-0x40),%esp	# set the stack pointer 
 
-	call show_tag
-
-	call show_tag
 	# now to C code
 	call	i386_init
-	call show_tag
 
 	# Should never get here, but in case we do, just spin.
 spin:	jmp	spin
@@ -110,33 +100,4 @@ mygdt:
 mygdtdesc:
 	.word	0x17			# sizeof(mygdt) - 1
 	.long	RELOC(mygdt)		# address mygdt
-
-pos:	.long 	0xB8000
-
-show_tag:
-        pusha
-        mov     pos, %eax
-	mov	%eax,	%ebx
-	add	$160,   %ebx
-	mov	%ebx,	pos
-        mov     %eax, %edi
-
-        mov     $'^',   %al
-        mov     $0x7,   %ah
-        movw    %ax,    (%edi)
-
-        movw    $20,    %cx
-
-disp_more:
-        add     $2, %edi
-
-        movw    %ax, (%edi)
-
-        loop disp_more
-
-
-        popa
-
-
-        ret
 

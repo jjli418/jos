@@ -9,21 +9,17 @@
 #include <kern/console.h>
 #include <kern/syscall.h>
 #include <kern/monitor.h>
+#include <kern/sched.h>
+#include <kern/kclock.h>
+#include <kern/picirq.h>
 
 u_int page_fault_mode = PFM_NONE;
 static struct Taskstate ts;
 
-extern int myint0;
-extern int myint14;
-extern int myint30;
-
 /* Interrupt descriptor table.  (Must be built at run time because
  * shifted function addresses can't be represented in relocation records.)
  */
-struct Gatedesc idt[256] = { {0}, 
-
-
-	};
+struct Gatedesc idt[256] = { {0}, };
 struct Pseudodesc idt_pd =
 {
 	0, sizeof(idt) - 1, (unsigned long) idt,
@@ -80,17 +76,11 @@ idt_init(void)
 					sizeof(struct Taskstate), 0);
 	gdt[GD_TSS >> 3].sd_s = 0;
 
-	printf("????????????????????????\n");
 	// Load the TSS
 	ltr(GD_TSS);
 
-	idt[0x0] = GATE(STS_IG32, GD_KT, (int)&myint0, 3);
-	idt[0xE] = GATE(STS_IG32, GD_KT, (int)&myint14, 3);
-	idt[0x30] = GATE(STS_IG32, GD_KT, (int)&myint30, 3);
-	printf("????????????????????????%x\n", idt[0x30]);
 	// Load the IDT
 	asm volatile("lidt idt_pd+2");
-
 }
 
 
@@ -125,11 +115,22 @@ trap(struct Trapframe *tf)
 	// Handle processor exceptions
 	// Your code here.
 
-	if(tf->tf_trapno == 0xE)
-		page_fault_handler(tf);
-	else if(tf->tf_trapno == T_SYSCALL)
-	{
-		syscall(tf->tf_eax, tf->tf_edx, tf->tf_ecx, tf->tf_ebx, tf->tf_esi, tf->tf_edi);
+	// Handle external interrupts
+	if (tf->tf_trapno == IRQ_OFFSET+0) {
+		// irq 0 -- clock interrupt
+		sched_yield();
+	}
+	if (tf->tf_trapno == IRQ_OFFSET+4) {
+		serial_intr();
+		return;
+	}
+	if (IRQ_OFFSET <= tf->tf_trapno 
+			&& tf->tf_trapno < IRQ_OFFSET+MAX_IRQS) {
+		// just ingore spurious interrupts
+		printf("spurious interrupt on irq %d\n",
+			tf->tf_trapno - IRQ_OFFSET);
+		print_trapframe(tf);
+		return;
 	}
 
 	// the user process or the kernel has a bug.

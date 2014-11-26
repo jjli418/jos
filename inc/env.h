@@ -28,6 +28,16 @@ struct Env {
 	Pde  *env_pgdir;                // Kernel virtual address of page dir
 	u_int env_cr3;                  // Physical address of page dir
 
+	// Exception handling
+	u_int env_pgfault_entry;	// page fault state
+
+	// Lab 4 IPC
+	u_int env_ipc_value;            // data value sent to us 
+	u_int env_ipc_from;             // envid of the sender  
+	u_int env_ipc_recving;          // env is blocked receiving
+	u_int env_ipc_dstva;		// va at which to map received page
+	u_int env_ipc_perm;		// perm of page mapping received
+
 };
 
 #endif // !_ENV_H_

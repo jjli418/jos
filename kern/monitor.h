@@ -13,9 +13,4 @@ void mon_help(int argc, char **argv);
 void mon_kerninfo(int argc, char **argv);
 void mon_backtrace(int argc, char **argv);
 
-
-void mon_alloc_page(int argc, char **argv);
-void mon_page_status(int argc, char **argv);
-void mon_free_page(int argc, char **argv);
-void mon_halt(int argc, char **argv);
 #endif	// not _KERN_MONITOR_H_

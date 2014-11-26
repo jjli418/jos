@@ -11,6 +11,16 @@ enum
 	SYS_cgetc,
 	SYS_getenvid,
 	SYS_env_destroy,
+	SYS_yield,
+	SYS_mem_alloc,
+	SYS_mem_map,
+	SYS_mem_unmap,
+	SYS_env_alloc,
+	SYS_set_trapframe,
+	SYS_set_status,
+	SYS_set_pgfault_entry,
+	SYS_ipc_can_send,
+	SYS_ipc_recv,
 
 	NSYSCALLS,
 };

@@ -19,7 +19,6 @@ libmain(int argc, char **argv)
 		binaryname = argv[0];
 
 	// call user main routine
-	//asm("jmp umain\n");
 	umain(argc, argv);
 
 	// exit gracefully

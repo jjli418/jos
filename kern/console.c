@@ -7,7 +7,7 @@
 #include <inc/assert.h>
 
 #include <kern/console.h>
-#include <kern/keyboard.h>
+#include <kern/picirq.h>
 
 
 void cons_intr(int (*proc)(void));
@@ -38,6 +38,7 @@ serial_intr(void)
 void
 serial_init(void)
 {
+	irq_setmask_8259A(irq_mask_8259A & ~(1<<4));	
 }
 
 
@@ -242,29 +243,12 @@ kbd_proc_data(void)
 	u_char data;
 	static u_int shift;
 
-	int state = inb(KBSTATP);
-
-	if ((state & KBS_DIB) == 0)
+	if ((inb(KBSTATP) & KBS_DIB) == 0)
 		return -1;
 
 	data = inb(KBDATAP);
 
-	//printf("\nscan code is %d\n", data);
-
 	if (data & 0x80) {
-		/*toggle the caps*/
-		if( (togglecode[data&~0x80]) & CAPSLOCK) // it's CAPSLOCK break code
-		{
-			if(shift & CAPSLOCK) // caps lock current status
-			{
-				set_capslock(1);
-			}
-			else
-			{
-				set_capslock(0);
-			}
-		}
-
 		/* key up */
 		shift &= ~shiftcode[data&~0x80];
 		return 0;
@@ -281,7 +265,6 @@ kbd_proc_data(void)
 		else if ('A' <= c && c <= 'Z')
 			c += 'a' - 'A';
 	}
-
 	
 	return c;
 }
@@ -295,6 +278,9 @@ kbd_intr(void)
 void
 kbd_init(void)
 {
+	// Drain the kbd buffer so that Bochs generates interrupts.
+	kbd_intr();
+	irq_setmask_8259A(irq_mask_8259A & ~(1<<1));
 }
 
 
@@ -319,7 +305,6 @@ cons_intr(int (*proc)(void))
 {
 	int c;
 
-//	printf("cons_intr\n");
 	while ((c = (*proc)()) != -1) {
 		if (c == 0)
 			continue;
@@ -327,8 +312,6 @@ cons_intr(int (*proc)(void))
 		if (cons.wpos == BY2CONS)
 			cons.wpos = 0;
 	}
-
-//	printf("exit cons_intr\n");
 }
 
 // return the next input character from the console, or 0 if none waiting
@@ -340,7 +323,7 @@ cons_getc(void)
 	// poll for any pending input characters,
 	// so that this function works even when interrupts are disabled
 	// (e.g., when called from the kernel monitor).
-	//serial_intr();
+	serial_intr();
 	kbd_intr();
 
 	// grab the next character from the input buffer.

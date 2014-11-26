@@ -7,7 +7,7 @@
 
 OBJDIRS += boot
 
-BOOT_OBJS := $(OBJDIR)/boot/boot.o $(OBJDIR)/boot/main.o 
+BOOT_OBJS := $(OBJDIR)/boot/boot.o $(OBJDIR)/boot/main.o
 
 $(OBJDIR)/boot/main.o: boot/main.c
 	@echo + cc -Os $<

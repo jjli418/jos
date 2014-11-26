@@ -31,16 +31,15 @@ runbochs() {
 	) | (
 		ulimit -t $timeout
 		bochs -q 'display_library: nogui' \
-			'parport1: enabled=1, file="bochs.out"' \
-			>$out 2>$err
-	)
+			'parport1: enabled=1, file="bochs.out"'
+	) >$out 2>$err
 }
 
 
 # Usage: runtest <tagname> <defs> <strings...>
 runtest() {
 	perl -e "print '$1: '"
-	rm -f obj/kern/init.o obj/kern/kernel obj/kern/bochs.img obj/fs/fs.img
+	rm -f obj/kern/init.o obj/kern/kernel obj/kern/bochs.img
 	if $verbose
 	then
 		echo "gmake $2... "
@@ -130,101 +129,124 @@ runtest1() {
 
 
 score=0
+timeout=10
 
-runtest1 hello \
+runtest1 dumbfork \
 	'.00000000. new env 00000800' \
-	'hello, world' \
-	'i am environment 00000800' \
-	'.00000800. destroying 00000800' \
-	'.00000800. free env 00000800' \
-	'Destroyed the only environment - nothing more to do!'
+	'.00000000. new env 00001001' \
+	'0: I am the parent!' \
+	'9: I am the parent!' \
+	'0: I am the child!' \
+	'9: I am the child!' \
+	'19: I am the child!' \
+	'.00001001. exiting gracefully' \
+	'.00001001. free env 00001001' \
+	'.00001802. exiting gracefully' \
+	'.00001802. free env 00001802'
 
-# the [00000800] tags should have [] in them, but that's 
-# a regular expression reserved character, and i'll be damned if
-# I can figure out how many \ i need to add to get through 
-# however many times the shell interprets this string.  sigh.
-
-runtest1 buggyhello \
-	'.00000800. PFM_KILL va 00000001 ip f01.....' \
-	'.00000800. free env 00000800'
-
-runtest1 evilhello \
-	'.00000800. PFM_KILL va ef800000 ip f01.....' \
-	'.00000800. free env 00000800'
-
-runtest1 divzero \
-	! '1/0 is ........!' \
-	'TRAP frame at 0xefbfff..' \
-	'  trap 0x00000000 Divide error' \
-	'  eip  0x008.....' \
-	'  ss   0x----0023' \
-	'.00000800. free env 00000800'
-
-runtest1 breakpoint \
-	'Welcome to the JOS kernel monitor!' \
-	'TRAP frame at 0xefbfffbc' \
-	'  trap 0x00000003 Breakpoint' \
-	'  eip  0x008.....' \
-	'  ss   0x----0023' \
-	! '.00000800. free env 00000800'
-
-runtest1 softint \
-	'Welcome to the JOS kernel monitor!' \
-	'TRAP frame at 0xefbfffbc' \
-	'  trap 0x0000000d General Protection' \
-	'  eip  0x008.....' \
-	'  ss   0x----0023' \
-	'.00000800. free env 00000800'
-
-runtest1 badsegment \
-	'TRAP frame at 0xefbfffbc' \
-	'  trap 0x0000000d General Protection' \
-	'  err  0x0000001c' \
-	'  eip  0x008.....' \
-	'  ss   0x----0023' \
-	'.00000800. free env 00000800'
+echo PART A SCORE: $score/5
 
 runtest1 faultread \
 	! 'I read ........ from location 0!' \
-	'.00000800. user fault va 00000000 ip 008.....' \
+	'.00001001. user fault va 00000000 ip 008.....' \
 	'TRAP frame at 0xefbfffbc' \
 	'  trap 0x0000000e Page Fault' \
 	'  err  0x00000004' \
-	'.00000800. free env 00000800'
-
-runtest1 faultreadkernel \
-	! 'I read ........ from location 0xf0100000!' \
-	'.00000800. user fault va f0100000 ip 008.....' \
-	'TRAP frame at 0xefbfffbc' \
-	'  trap 0x0000000e Page Fault' \
-	'  err  0x00000005' \
-	'.00000800. free env 00000800' \
+	'.00001001. free env 00001001'
 
 runtest1 faultwrite \
-	'.00000800. user fault va 00000000 ip 008.....' \
+	'.00001001. user fault va 00000000 ip 008.....' \
 	'TRAP frame at 0xefbfffbc' \
 	'  trap 0x0000000e Page Fault' \
 	'  err  0x00000006' \
-	'.00000800. free env 00000800'
+	'.00001001. free env 00001001'
 
-runtest1 faultwritekernel \
-	'.00000800. user fault va f0100000 ip 008.....' \
-	'TRAP frame at 0xefbfffbc' \
-	'  trap 0x0000000e Page Fault' \
-	'  err  0x00000007' \
-	'.00000800. free env 00000800'
+runtest1 faultdie \
+	'i faulted at va deadbeef, err 6' \
+	'.00001001. exiting gracefully' \
+	'.00001001. free env 00001001' 
 
-runtest1 testbss \
-	'Making sure bss works right...' \
-	'Yes, good.  Now doing a wild write off the end...' \
-	'.00000800. user fault va 00c..... ip 008.....' \
-	'.00000800. free env 00000800'
+runtest1 faultalloc \
+	'fault deadbeef' \
+	'this string was faulted in at deadbeef' \
+	'fault cafebffe' \
+	'fault cafec000' \
+	'this string was faulted in at cafebffe' \
+	'.00001001. exiting gracefully' \
+	'.00001001. free env 00001001'
 
+runtest1 faultallocbad \
+	'.00001001. PFM_KILL va deadbeef ip f01.....' \
+	'.00001001. free env 00001001' 
 
+runtest1 faultnostack \
+	'.00001001. PFM_KILL va eebfff.. ip f01.....' \
+	'.00001001. free env 00001001'
 
-echo Score: $score/60
+runtest1 faultbadhandler \
+	'.00001001. PFM_KILL va eebfef.. ip f01.....' \
+	'.00001001. free env 00001001'
 
-score=0
+runtest1 faultevilhandler \
+	'.00001001. PFM_KILL va eebfef.. ip f01.....' \
+	'.00001001. free env 00001001'
+
+runtest1 forktree \
+	'....: I am .0.' \
+	'....: I am .1.' \
+	'....: I am .000.' \
+	'....: I am .100.' \
+	'....: I am .110.' \
+	'....: I am .111.' \
+	'....: I am .011.' \
+	'....: I am .001.' \
+	'.000028... exiting gracefully' \
+	'.000048... exiting gracefully' \
+	'.000058... exiting gracefully' \
+	'.000078... exiting gracefully' \
+	'.000078... free env 000078..'
+
+echo PART B SCORE: $score/50
+
+runtest1 spin \
+	'.00000000. new env 00000800' \
+	'.00000000. new env 00001001' \
+	'I am the parent.  Forking the child...' \
+	'.00001001. new env 00001802' \
+	'I am the parent.  Running the child...' \
+	'I am the child.  Spinning...' \
+	'I am the parent.  Killing the child...' \
+	'.00001001. destroying 00001802' \
+	'.00001001. free env 00001802' \
+	'.00001001. exiting gracefully' \
+	'.00001001. free env 00001001'
+
+runtest1 pingpong \
+	'.00000000. new env 00000800' \
+	'.00000000. new env 00001001' \
+	'.00001001. new env 00001802' \
+	'send 0 from 1001 to 1802' \
+	'1802 got 0 from 1001' \
+	'1001 got 1 from 1802' \
+	'1802 got 8 from 1001' \
+	'1001 got 9 from 1802' \
+	'1802 got 10 from 1001' \
+	'.00001001. exiting gracefully' \
+	'.00001001. free env 00001001' \
+	'.00001802. exiting gracefully' \
+	'.00001802. free env 00001802' \
+
+runtest1 primes \
+	'.00000000. new env 00000800' \
+	'.00000000. new env 00001001' \
+	'.00001001. new env 00001802' \
+	'2 .00001802. new env 00002003' \
+	'3 .00002003. new env 00002804' \
+	'5 .00002804. new env 00003005' \
+	'7 .00003005. new env 00003806' \
+	'11 .00003806. new env 00004007' 
+
+echo PART C SCORE: $score/65
 
 
 

@@ -11,6 +11,7 @@
 #include <kern/pmap.h>
 #include <kern/trap.h>
 #include <kern/monitor.h>
+#include <kern/sched.h>
 
 struct Env *envs = NULL;		// All environments
 struct Env *curenv = NULL;	        // The current env
@@ -34,8 +35,9 @@ mkenvid(struct Env *e)
 // Converts an envid to an env pointer.
 //
 // RETURNS
-//   env pointer -- on success and sets *error = 0
-//   NULL -- on failure, and sets *error = the error number
+//   0 on success, -error on error.
+//   on success, sets *penv to the environment
+//   on error, sets *penv to NULL.
 //
 int
 envid2env(u_int envid, struct Env **penv, int checkperm)
@@ -81,12 +83,6 @@ envid2env(u_int envid, struct Env **penv, int checkperm)
 void
 env_init(void)
 {
-	int i;
-
-	LIST_INIT(&env_free_list);
-
-	for( i = 0; i < NENV; i++)
-		LIST_INSERT_HEAD(&env_free_list, &envs[i], env_link);
 }
 
 //
@@ -105,60 +101,11 @@ static int
 env_setup_vm(struct Env *e)
 {
 	int i, r;
-	struct Page *p = NULL, *p1 = NULL, *p2 = NULL;
-	Pte *pTable = NULL;
-	u_long uStackBottom = USTACKTOP - BY2PG;
+	struct Page *p = NULL;
 
 	// Allocate a page for the page directory
 	if ((r = page_alloc(&p)) < 0)
 		return r;
-
-
-	e->env_pgdir = KADDR(page2pa(p));
-	e->env_cr3 = page2pa(p);
-
-	printf("setupvm:cr3=%x\n", e->env_cr3);
-
-	memcpy(e->env_pgdir, boot_pgdir, BY2PG); // dangeous
-
-	// map user statck
-	if ((r = page_alloc(&p1)) < 0)
-	{
-		page_free(p1);
-		return r;
-	}
-	
-	pTable = (Pte*)KADDR( page2pa(p1) );
-	e->env_pgdir[ PDX(uStackBottom) ] = page2pa(p1) | PTE_U |PTE_W| PTE_P;
-
-	if (( r = page_alloc(&p2)) < 0)
-	{
-		page_free(p1);
-		page_free(p2);
-		return r;
-	}
-
-	pTable[ PTX(uStackBottom) ] = page2pa(p2) | PTE_U | PTE_W | PTE_P;
-
-	// map UTEXT address space
-	/*
-	int npages = 1024; // 4M address
-
-	if (( r = page_alloc(&p) ) < 0)
-	{
-		return r;
-	}
-
-	e->env_pgdir[ PDX(UTEXT) ] = page2pa(p) | PTE_U | PTE_P;
-	pTable = (Pte*)KADDR( page2pa(p) );
-
-	for ( i = 0; i < npages; i++)
-	{
-		page_alloc(&p);
-		pTable[i] = page2pa(p) | PTE_U | PTE_P;
-	}
-	*/
-
 
 	// Hint:
 	//    - The VA space of all envs is identical above UTOP
@@ -224,6 +171,11 @@ env_alloc(struct Env **new, u_int parent_id)
 	// You also need to set tf_eip to the correct value at some point.
 	// Hint: see load_icode
 
+	// Clear the page fault handler until user installs one.
+	e->env_pgfault_entry = 0;
+
+	// Also clear the IPC receiving flag.
+	e->env_ipc_recving = 0;
 
 
 	// commit the allocation
@@ -245,55 +197,7 @@ env_alloc(struct Env **new, u_int parent_id)
 static void
 map_segment(struct Env *e, u_int va, u_int len)
 {
-	// Your code here. simplely assuming len < 4M, and the new entry for the mapped va is not in use
-	struct Page *p;
-	int pdx = PDX(va);
-	int ptx = PTX(va);
-	int pages = ROUND(len, BY2PG) / BY2PG;
-	int count = 0;
-	Pte *pTable, *pTableKern;
-
-	// map in kernel space to prepare the code for the Env
-	if (!(boot_pgdir[pdx] & PTE_P))
-	{
-		if (page_alloc(&p) < 0)
-			panic("Unable to allocat a page in map_segment()");
-
-
-		memset(KADDR(page2pa(p)), 0, BY2PG);
-		boot_pgdir[pdx] = page2pa(p) | PTE_W | PTE_P | PTE_U;
-	}
-	
-
-	// check the secondory table existence
-	if (!(e->env_pgdir[pdx] & PTE_P))
-	{
-		printf("The page for va:%x not exist.\n", va);
-		if (page_alloc(&p) < 0)
-			panic("Unable to allocat a page in map_segment()");
-
-		memset(KADDR(page2pa(p)), 0, BY2PG);
-		e->env_pgdir[pdx] = page2pa(p) | PTE_P | PTE_U | PTE_W;
-	}
-	else
-		printf("The entry exist for:%x and content is:%x\n", va, e->env_pgdir[pdx]);
-
-	pTable = (Pte*)KADDR(PTE_ADDR(e->env_pgdir[pdx]));
-	pTableKern = (Pte*)KADDR(PTE_ADDR(boot_pgdir[pdx]));
-
-	printf("Will alloate:%x page(s) for va:%x\n", pages, va);
-	// check if some pages for va is mapped
-	for( count = 0; count < pages; count++)
-	{
-		if (! (pTable[ptx+count] & PTE_P))
-		{
-			if(page_alloc(&p) < 0)
-				panic("Unable to allocat a page in map_segment()");
-			pTable[ptx+count] = page2pa(p) | PTE_P | PTE_U | PTE_W;
-			pTableKern[ptx+count] = page2pa(p) | PTE_P | PTE_W | PTE_U;
-		}
-	}
-	
+	// Your code here.
 }
 
 //
@@ -325,34 +229,6 @@ load_icode(struct Env *e, u_char *binary, u_int size)
 	// Hint:
 	//  Loading the segments is much simpler if you set things up
 	//  so that you can access them via the user's virtual addresses!
-	
-	struct Elf *elfHeader = (struct Elf*)binary;
-	struct Proghdr *prgHeader = (struct Proghdr*)(binary + elfHeader->e_phoff);
-	u_short phNum = elfHeader->e_phnum;
-	int i = 0, count;
-	int pages, pdx, ptx;
-
-	printf("^^^^^^^^^^^^^^^^^^^^^^^^%x\n", *(int*)binary);
-	printf("icode Entry point is:%x\n", elfHeader->e_entry);
-	printf("Phnum is:%x\n", phNum);
-	for( ; i < phNum; i++)
-	{
-		printf("Pgr header type is:%x, addr=%x, size=%x\n", prgHeader->p_type, prgHeader->p_va, prgHeader->p_filesz);
-		if ( prgHeader->p_type == ELF_PROG_LOAD )
-		{
-			map_segment(e, prgHeader->p_va, prgHeader->p_memsz);
-
-			// map the physical address in kernel page dir
-			printf("contents in pa:%x\n", *(int*)prgHeader->p_va);
-			memcpy( prgHeader->p_va, binary + prgHeader->p_offset, prgHeader->p_filesz);
-			printf("First struction is:%x\n", *((int*)prgHeader->p_va));
-		}
-
-		prgHeader++;
-	}
-
-	e->env_tf.tf_eip = elfHeader->e_entry;
-	
 }
 
 //
@@ -363,15 +239,6 @@ load_icode(struct Env *e, u_char *binary, u_int size)
 void
 env_create(u_char *binary, int size)
 {
-	struct Env *env;
-
-	printf("User binaray addr=%x, size=%d\n", (int)binary, size);
-
-	int result = env_alloc(&env, 0);
-
-	printf("allocated cr3=%x\n", env->env_cr3);
-
-	load_icode(env, binary, size);
 }
 
 //
@@ -431,9 +298,10 @@ env_destroy(struct Env *e)
 {
 	env_free(e);
 
-	printf("Destroyed the only environment - nothing more to do!\n");
-	for (;;)
-		monitor(NULL);
+	if (curenv == e) {
+		curenv = NULL;
+		sched_yield();
+	}
 }
 
 
@@ -466,18 +334,17 @@ env_pop_tf(struct Trapframe *tf)
 void
 env_run(struct Env *e)
 {
+	// save the register state of the previously executing environment
+	if (curenv) {
+		// Your code here.
+		// Hint: this can be done in a single line of code.
+		panic("need to save previous env's register state!");
+	}
 
 	// step 1: set curenv to the new environment to be run.
 	// step 2: use lcr3 to switch to the new environment's address space.
 	// step 3: use env_pop_tf() to restore the new environment's registers
 	//	and drop into user mode in the new environment.
-	
-	curenv = e;
-
-	printf("env_run(env_run(env_run(env_run(env_run(env_run(env_run(env_run:%x\n", e->env_cr3);
-	lcr3(e->env_cr3);
-	printf("env_run(env_run(env_run(env_run(env_run(env_run(env_run(env_run(\n");
-	env_pop_tf(&e->env_tf);
 }
 
 

@@ -37,30 +37,4 @@ struct Proghdr {
 	u_int p_align;
 };
 
-#define SHT_SYMTAB 2
-#define SHT_STRTAB 3
-typedef struct {
-	u_int sh_name;
-	u_int sh_type;
-	u_int sh_flags;
-	u_int sh_addr;
-	u_int sh_offset;
-	u_int sh_size;
-	u_int sh_link;
-	u_int sh_info;
-	u_int sh_addralign;
-	u_int sh_entsize;
-
-} Elf32_Hsdr;
-
-typedef struct{
-u_int 	st_name;
-u_int 	st_value;
-u_int 	st_size;
-u_char 	st_info;
-u_char  st_other;
-u_short st_shndx;
-} Elf32_Sym;
-
-
 #endif

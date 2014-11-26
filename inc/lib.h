@@ -38,6 +38,40 @@ void	sys_cputs(char*);
 int	sys_cgetc(void);
 u_int	sys_getenvid(void);
 int	sys_env_destroy(u_int);
+void	sys_yield(void);
+int	sys_mem_alloc(u_int, u_int, u_int);
+int	sys_mem_map(u_int, u_int, u_int, u_int, u_int);
+int	sys_mem_unmap(u_int, u_int);
+// int	sys_env_alloc(void);
+int	sys_set_trapframe(u_int, struct Trapframe*);
+int	sys_set_status(u_int, u_int);
+int	sys_set_pgfault_entry(u_int, u_int);
+int	sys_ipc_can_send(u_int, u_int, u_int, u_int);
+void	sys_ipc_recv(u_int);
+
+// This must be inlined.  
+// Exercise for reader: why?
+static inline int
+sys_env_alloc(void)
+{
+	int ret;
+
+	asm volatile("int %2"
+		: "=a" (ret)
+		: "a" (SYS_env_alloc),
+		  "i" (T_SYSCALL)
+	);
+	return ret;
+}
+
+// ipc.c
+void	ipc_send(u_int whom, u_int val, u_int srcva, u_int perm);
+u_int	ipc_recv(u_int *whom, u_int dstva, u_int *perm);
+
+// fork.c
+#define	PTE_LIBRARY	0x400
+int	fork(void);
+int	sfork(void);	// Challenge!
 
 
 

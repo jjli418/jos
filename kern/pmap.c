@@ -68,9 +68,6 @@ i386_detect_memory(void)
 	basemem = ROUNDDOWN(nvram_read(NVRAM_BASELO)*1024, BY2PG);
 	extmem = ROUNDDOWN(nvram_read(NVRAM_EXTLO)*1024, BY2PG);
 
-	printf("get ext memory=%dK\n", nvram_read(NVRAM_EXTLO));
-	extmem = ROUNDDOWN(nvram_read(NVRAM_EXTLO)*1024, BY2PG);
-
 	// Calculate the maxmium physical address based on whether
 	// or not there is any extended memory.  See comment in ../inc/mmu.h.
 	if (extmem)
@@ -80,7 +77,7 @@ i386_detect_memory(void)
 
 	npage = maxpa / BY2PG;
 
-	printf("Physical memory: %dK available, ", (u_int)(maxpa/1024));
+	printf("Physical memory: %dK available, ", (int)(maxpa/1024));
 	printf("base = %dK, extended = %dK\n", (int)(basemem/1024), (int)(extmem/1024));
 }
 
@@ -117,16 +114,6 @@ alloc(u_int n, u_int align, int clear)
 
 	// Your code here:
 	//	Step 1: round freemem up to be aligned properly
-	u_long alloc_start = ROUND(freemem, align);
-	freemem = alloc_start + n;
-
-	v = (void*)alloc_start;
-
-	if(clear)
-		memset(v, 0, n);
-
-	return v;
-	
 	//	Step 2: save current value of freemem as allocated chunk
 	//	Step 3: increase freemem to record allocation
 	//	Step 4: clear allocated chunk if necessary
@@ -155,24 +142,6 @@ alloc(u_int n, u_int align, int clear)
 static Pte*
 boot_pgdir_walk(Pde *pgdir, u_long va, int create)
 {
-	int pdIndex, ptIndex;
-	
-
-	pdIndex = PDX(va);
-	ptIndex = PTX(va);
-
-	Pte *ptEntries = pgdir[pdIndex];
-	if(ptEntries[ptIndex] == 0)
-	{
-		if(create)
-			ptEntries[ptIndex] = PADDR(alloc(BY2PG, BY2PG, 1));
-		else
-			return 0;
-
-	}
-
-	return ptEntries[ptIndex];
-
 }
 
 //
@@ -186,18 +155,6 @@ boot_pgdir_walk(Pde *pgdir, u_long va, int create)
 static void
 boot_map_segment(Pde *pgdir, u_long va, u_long size, u_long pa, int perm)
 {
-	int entriesCount, i;
-
-	Pte* pte;
-
-	perm |= PTE_P;
-	entriesCount = size / BY2PG;
-
-	for(i = 0; i < entriesCount; i++)
-	{
-		pte = boot_pgdir_walk(pgdir, va + i*BY2PG, 1);
-		*pte = (pa + i*BY2PG) | perm;
-	}
 }
 
 // Set up a two-level page table:
@@ -218,7 +175,7 @@ i386_vm_init(void)
 	Pde *pgdir;
 	u_int cr0, n;
 
-//	panic("i386_vm_init: This function is not finished\n");
+	panic("i386_vm_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -246,44 +203,15 @@ i386_vm_init(void)
 	//     * [KSTACKTOP-PDMAP, KSTACKTOP-KSTKSIZE) -- not backed => faults
 	//   Permissions: kernel RW, user NONE
 	// Your code goes here:
-	Pte *ptable = alloc(BY2PG, BY2PG, 1);
-	u_long vstkBottom = KSTACKTOP - KSTKSIZE;
 
-	pgdir[PDX(vstkBottom)] = PADDR(ptable)|PTE_W|PTE_P;
-	
-	int stkPages = KSTKSIZE / BY2PG;
-	int i;
-
-	for(i = 0; i < stkPages; i++)
-	{
-		ptable[PTX(vstkBottom) + i] = (PADDR(bootstack) | PTE_W | PTE_P) + i*BY2PG;
-	}
-
-	
 	//////////////////////////////////////////////////////////////////////
-	// Map UENV point to NENV of struct Env
-	//
-	int envSize = NENV * sizeof(struct Env);
-	int envPages = ROUND(envSize, BY2PG) / BY2PG;
-	int envVa, pdx, pte;
-
-	u_long tempVa = 0, paAddr;
-	int ptej, tempSize = 0;
-
-	ptable = alloc(BY2PG, BY2PG, 1);
-
-	pdx = PDX(UENVS);
-	pgdir[pdx] = PADDR(ptable) | PTE_U | PTE_P;
-
-	envs = alloc(envSize, BY2PG, 1);
-
-	for( i = 0; i < envPages; i++)
-	{
-
-		ptable[i] = (PADDR(envs) + tempSize) | PTE_U | PTE_P;
-		tempSize += BY2PG;
-		
-	}
+	// Map all of physical memory at KERNBASE. 
+	// Ie.  the VA range [KERNBASE, 2^32 - 1] should map to
+	//      the PA range [0, 2^32 - 1 - KERNBASE]   
+	// We might not have that many(ie. 2^32 - 1 - KERNBASE)    
+	// bytes of physical memory.  But we just set up the mapping anyway.
+	// Permissions: kernel RW, user NONE
+	// Your code goes here: 
 
 	//////////////////////////////////////////////////////////////////////
 	// Make 'pages' point to an array of size 'npage' of 'struct Page'.   
@@ -294,50 +222,9 @@ i386_vm_init(void)
 	//    - pages -- kernel RW, user NONE
 	//    - the image mapped at UPAGES  -- kernel R, user R
 	// Your code goes here: 
-	
-	pages = alloc(npage * sizeof(struct Page), BY2PG, 1);
-	ptable = alloc(BY2PG, BY2PG, 1);
-
-	pgdir[PDX(UPAGES)] = PADDR(ptable) | PTE_U | PTE_P;
-
-	int nstructPages = ROUND(npage * sizeof(struct Page), BY2PG) / BY2PG;
-
-	for( i = 0; i < nstructPages; i++)
-	{
-		ptable[PTX(UPAGES) +i ] = (PADDR(pages) + i*BY2PG ) | PTE_U | PTE_P;
-	}
-
-	//////////////////////////////////////////////////////////////////////
-	// Map all of physical memory at KERNBASE. 
-	// Ie.  the VA range [KERNBASE, 2^32 - 1] should map to
-	//      the PA range [0, 2^32 - 1 - KERNBASE]   
-	// We might not have that many(ie. 2^32 - 1 - KERNBASE)    
-	// bytes of physical memory.  But we just set up the mapping anyway.
-	// Permissions: kernel RW, user NONE
-	// Your code goes here: 
-	
-	u_int tkb = KERNBASE;
-	u_long phy_addr = 0;
-	int j;
-
-	for( ; tkb != 0; tkb += BY2PG*1024)
-	{
-		ptable = alloc(BY2PG, BY2PG, 1);
-		pgdir[PDX(tkb)] = PADDR(ptable) | PTE_P | PTE_W;
-
-		for(j = 0; j < 1024; j++)
-		{
-			ptable[j] = phy_addr | PTE_P | PTE_W;
-			phy_addr += BY2PG;
-		}
-
-
-	}
 
 
 	check_boot_pgdir();
-
-	// reset the map
 
 	//////////////////////////////////////////////////////////////////////
 	// On x86, segmentation maps a VA to a LA (linear addr) and
@@ -415,10 +302,7 @@ check_boot_pgdir(void)
 	// check envs array
 	n = ROUND(NENV*sizeof(struct Env), BY2PG);
 	for(i=0; i<n; i+=BY2PG)
-		{
-		printf("%d  %d\n", va2pa(pgdir, UENVS+i), PADDR(envs)+i);
 		assert(va2pa(pgdir, UENVS+i) == PADDR(envs)+i);
-		}
 
 	// check phys mem
 	for(i=0; KERNBASE+i != 0; i+=BY2PG)
@@ -492,85 +376,11 @@ page_init(void)
 	//
 	// Change the code to reflect this.
 	int i;
-	unsigned int va = KERNBASE;
-
-	extern char end[];
-
 	LIST_INIT (&page_free_list);
-
-	// first 4k in use
-	pages[0].pp_ref = 1;
-
-	// 4k ~ 640k mark as free
-	for (i = 1; i*BY2PG < IOPHYSMEM; i++)
-	{
+	for (i = 0; i < npage; i++) {
 		pages[i].pp_ref = 0;
 		LIST_INSERT_HEAD(&page_free_list, &pages[i], pp_link);
 	}
-
-	// 640k ~ 1M in use for IO
-	for( ; i*BY2PG < EXTPHYSMEM; i++)
-		pages[i].pp_ref = 1;
-
-	// kernel in use
-	u_long kern_end = ROUND((u_long)end, BY2PG);
-	for( ; i*BY2PG < kern_end - KERNBASE; i++)
-		pages[i].pp_ref = 1;
-
-	// pgdir & pgentries 4k * 4k = 16M
-	u_long pgdir_end = kern_end + 16 * 1024 * 1024;
-
-	for( ; i*BY2PG < pgdir_end - KERNBASE; i++)
-		pages[i].pp_ref = 1;
-
-	// space for pages is in use
-	u_long pages_end = ROUND(pgdir_end + npage * sizeof(struct Page), BY2PG);
-
-	for( ; i*BY2PG < pages_end - KERNBASE; i++)
-		pages[i].pp_ref = 1;
-
-	// the left memory mark as free
-	for( ; i < npage; i++)
-	{
-		pages[i].pp_ref = 0;
-		LIST_INSERT_HEAD(&page_free_list, &pages[i], pp_link);
-	}
-
-	/*
-	for (i = 0;va && i < npage; i++) {
-
-		int pdeIndex = PDX(va);
-		int pteIndex = PTX(va);
-
-	//printf("i=%d va=%d pdeI=%d pteI=%d npage=%d\n", i,va,pdeIndex, boot_pgdir[pdeIndex],npage);
-		if(i < limitIndex)
-			pages[i].pp_ref = 1;
-		else
-		{
-		// pgdir[i] stores the physical address, so the kernelbase should be added
-		//	 ((Pte*)KADDR((boot_pgdir[pdeIndex])))[pteIndex] = 0; // make the page is not allocated
-	//			printf("pgdir=%d\n", (int)boot_pgdir[pdeIndex]);
-		        if(boot_pgdir[pdeIndex] & PTE_P)
-				{
-
-				Pte* ptes = (Pte*)KADDR((boot_pgdir[pdeIndex]));
-
-				int k = 0;
-				while(k++ < 1024)
-				  *ptes++ = 0;
-				
-//				printf("i=%d va=%x pdeI=%d pteI=%d npage=%d freelist=%x pages=%x\n", i,va,pdeIndex, boot_pgdir[pdeIndex],npage,(int)&page_free_list, (int)pages);
-				//boot_pgdir[pdeIndex] = 0;
-
-				}
-			pages[i].pp_ref = 0;
-			LIST_INSERT_HEAD(&page_free_list, &pages[i], pp_link);
-		}
-
-		va += BY2PG;
-
-	}*/
-
 }
 
 //
@@ -600,18 +410,7 @@ int
 page_alloc(struct Page **pp)
 {
 	// Fill this function in
-	struct Page *p = LIST_FIRST(&page_free_list);
-
-	if(p == NULL)
-	    return -E_NO_MEM;
-
-	LIST_REMOVE(p, pp_link);
-
-	//p->pp_ref= 0;
-	*pp = p;
-
-
-	return 0;
+	return -E_NO_MEM;
 }
 
 //
@@ -622,9 +421,6 @@ void
 page_free(struct Page *pp)
 {
 	// Fill this function in
-	//pp->pp_ref--;
-
-	LIST_INSERT_HEAD(&page_free_list, pp, pp_link);
 }
 
 //
@@ -653,44 +449,6 @@ int
 pgdir_walk(Pde *pgdir, u_long va, int create, Pte **ppte)
 {
 	// Fill this function in
-	
-	int ret = 0;
-	int pdeIndex = PDX(va);
-	int pteIndex = PTX(va);
-
-	*ppte = (Pte*)0;
-
-	printf(" va = %x, %d, %d\n", va, pdeIndex, pteIndex);
-	if((PTE_P & pgdir[pdeIndex]))
-	{
-	    Pte* ptes = (Pte*)KADDR(PTE_ADDR(pgdir[pdeIndex]));
-
-	    Pte* resPte = ptes + pteIndex;
-
-	    if(PTE_P & *resPte)
-	    	*ppte = resPte;
-
-	}
-	else if(create)
-	{
-	    struct Page* page;
-	    ret = page_alloc(&page);
-
-	    if(ret != -E_NO_MEM)
-	    {
-	    	    page->pp_ref++;
-
-	    	    pgdir[pdeIndex] = page2pa(page) | PTE_P;
-	       	    //Pte* ptes = (Pte*)KADDR(PTE_ADDR(pgdir[pdeIndex])); 
-
-		    *ppte = NULL;
-
-		    //*ppte = ptes[pteIndex];
-	    }
-
-	}
-
-	return ret;
 }
 
 //
@@ -714,36 +472,6 @@ int
 page_insert(Pde *pgdir, struct Page *pp, u_long va, u_int perm) 
 {
 	// Fill this function in
-	
-	Pte* pte = NULL;
-	int pdeIndex = PDX(va);
-	int pteIndex = PTX(va);
-	
-	if(pgdir_walk(pgdir, va, 1, &pte) == 0)
-	{
-		pp->pp_ref++;
-
-		if(pte != NULL)
-		{
-		    printf("hhhhhhhhhhhhhhhhhhh:%x, %d, %d\n", *pte, pdeIndex, pteIndex);
-		    page_remove(pgdir, va);
-		}
-		else
-		{
-		   pte = ((Pte*)KADDR(PTE_ADDR(pgdir[pdeIndex]))) + pteIndex;
-		}
-
-
-		Pte paAddr = page2pa(pp) | perm | PTE_P;
-		*pte = paAddr;
-		printf("stored entry addr=%x, %d, %d\n", PTE_ADDR(*pte), pdeIndex, pteIndex);
-	}
-	else
-	{
-		return -E_NO_MEM;
-	}
-
-	return 0;
 }
 
 //
@@ -760,13 +488,6 @@ struct Page*
 page_lookup(Pde *pgdir, u_long va, Pte **ppte)
 {
 	// Fill this function in
-	pgdir_walk(pgdir, va, 0, ppte);
-
-
-	if(*ppte == 0)
-		return 0;
-	else
-		return (struct Page*)pa2page(PTE_ADDR(**ppte));
 }
 
 //
@@ -787,22 +508,6 @@ void
 page_remove(Pde *pgdir, u_long va) 
 {
 	// Fill this function in
-	
-	Pte* pte;
-	struct Page* page = page_lookup(pgdir, va, &pte);
-
-	if( page == NULL)
-		return;
-
-	page->pp_ref--;
-
-	if(page->pp_ref== 0)
-	{
-		LIST_INSERT_HEAD(&page_free_list, page, pp_link);
-	}
-
-	*pte = 0;
-	tlb_invalidate(pgdir, va);
 }
 
 //
@@ -813,8 +518,8 @@ void
 tlb_invalidate(Pde *pgdir, u_long va)
 {
 	// Flush the entry only if we're modifying the current address space.
-	// For now, there is only one address space, so always invalidate.
-	invlpg(va);
+	if (!curenv || curenv->env_pgdir == pgdir)
+		invlpg(va);
 }
 
 void

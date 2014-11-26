@@ -57,4 +57,59 @@ sys_getenvid(void)
 	 return syscall(SYS_getenvid, 0, 0, 0, 0, 0);
 }
 
+void
+sys_yield(void)
+{
+	syscall(SYS_yield, 0, 0, 0, 0, 0);
+}
+
+int
+sys_mem_alloc(u_int envid, u_int va, u_int perm)
+{
+	return syscall(SYS_mem_alloc, envid, va, perm, 0, 0);
+}
+
+int
+sys_mem_map(u_int srcenv, u_int srcva, u_int dstenv, u_int dstva, u_int perm)
+{
+	return syscall(SYS_mem_map, srcenv, srcva, dstenv, dstva, perm);
+}
+
+int
+sys_mem_unmap(u_int envid, u_int va)
+{
+	return syscall(SYS_mem_unmap, envid, va, 0, 0, 0);
+}
+
+// sys_env_alloc is inlined in lib.h
+
+int
+sys_set_trapframe(u_int envid, struct Trapframe *tf)
+{
+	return syscall(SYS_set_trapframe, envid, (u_int)tf, 0, 0, 0);
+}
+
+int
+sys_set_status(u_int envid, u_int status)
+{
+	return syscall(SYS_set_status, envid, status, 0, 0, 0);
+}
+
+int
+sys_set_pgfault_entry(u_int envid, u_int a1)
+{
+	return syscall(SYS_set_pgfault_entry, envid, a1, 0, 0, 0);
+}
+
+int
+sys_ipc_can_send(u_int envid, u_int value, u_int srcva, u_int perm)
+{
+	return syscall(SYS_ipc_can_send, envid, value, srcva, perm, 0);
+}
+
+void
+sys_ipc_recv(u_int dstva)
+{
+	syscall(SYS_ipc_recv, dstva, 0, 0, 0, 0);
+}
 

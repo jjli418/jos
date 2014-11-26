@@ -42,11 +42,11 @@ TOP = .
 #	make 'GCCPREFIX=i386-jos-elf-' gccsetup
 #
 
-CC	:= $(GCCPREFIX)gcc -pipe -m32
+CC	:= $(GCCPREFIX)gcc -pipe
 GCC_LIB := $(shell $(CC) -print-libgcc-file-name)
-AS	:= $(GCCPREFIX)as --32
+AS	:= $(GCCPREFIX)as
 AR	:= $(GCCPREFIX)ar
-LD	:= $(GCCPREFIX)ld -m elf_i386
+LD	:= $(GCCPREFIX)ld
 OBJCOPY	:= $(GCCPREFIX)objcopy
 OBJDUMP	:= $(GCCPREFIX)objdump
 NM	:= $(GCCPREFIX)nm
@@ -59,7 +59,6 @@ PERL	:= perl
 # Compiler flags
 # Note that -O2 is required for the boot loader to fit within 512 bytes;
 # -fno-builtin is required to avoid refs to undefined functions in the kernel.
-#CFLAGS	:= $(CFLAGS) $(DEFS)  -fno-builtin -I$(TOP) -MD -Wall -Wno-format -ggdb
 CFLAGS	:= $(CFLAGS) $(DEFS) -O2 -fno-builtin -I$(TOP) -MD -Wall -Wno-format -ggdb
 
 # Linker flags for user programs
@@ -134,7 +133,7 @@ grade:
 	$(MAKE) all
 	sh grade.sh
 
-HANDIN_CMD = tar cf - . | gzip | uuencode lab$(LAB).tar.gz | mail $(HANDIN_EMAIL)
+HANDIN_CMD = tar cf - . | gzip > ~class/handin/lab$(LAB)/$$USER/lab$(LAB).tar.gz
 handin: clean
 	$(HANDIN_CMD)
 tarball: clean
@@ -191,4 +190,4 @@ apply-patch:
 
 always:
 
-.PHONY: all always patch apply-patch handin tarball
+.PHONY: all always patch apply-patch handin tarball grade

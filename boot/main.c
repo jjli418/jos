@@ -33,11 +33,8 @@
 #define  SECTOR_SIZE    512
 
 static u_char *sect = (u_char*)0x10000;	// scratch space
-static u_char* cga = (u_char*)0xb8000;
 
-/*
 void readsect(u_char*, u_int, u_int);
-*/
 void readseg(u_int, u_int, u_int);
 
 void
@@ -47,19 +44,12 @@ cmain(void)
 	struct Elf *elf;
 	struct Proghdr *ph;
 
-	sect = sect;
 	// read 1st page off disk
-	//readsect(sect, 8, 1);
-	
+	readsect(sect, 8, 1);
 
-	//if(*(u_int*)sect != 0x464C457F)	// \x7F ELF in little endian
-	//	return;
+	if(*(u_int*)sect != 0x464C457F)	// \x7F ELF in little endian
+		goto bad;
 
-        for(i = 0; (*(u_int*)sect != 0x464C457F) && i< 20; i++)
-	{
-	*cga++ = '%';
-	*cga++ = 7;
-	}
 	// look at ELF header - ignores ph flags
 	elf = (struct Elf*)sect;
 	entry = elf->e_entry;
@@ -67,22 +57,13 @@ cmain(void)
 	for(i=0; i<elf->e_phnum; i++, ph++)
 		readseg(ph->p_va, ph->p_memsz, ph->p_offset);
 
-	
-	// read section header
-
-	//sh_off = elf->e_shoff % 512;
-	//readseg(sh_addr + sh_off, elf->e_shentsize*elf->e_shnum, elf->e_shoff);
-
-	//sh_addr += sh_off; // data will be read from sector boundary, so add the offset to get the real address
-
-		
 	entry &= 0xFFFFFF;
 	((void(*)(void))entry)();
 	/* DOES NOT RETURN */
 
 bad:
-	//outw(0x8A00, 0x8A00);
-	//outw(0x8A00, 0x8E00);
+	outw(0x8A00, 0x8A00);
+	outw(0x8A00, 0x8E00);
 	for(;;);
 	
 }
@@ -92,7 +73,7 @@ bad:
 void
 readseg(u_int va, u_int count, u_int offset)
 {
-	u_int i, j;
+	u_int i;
 
 	va &= 0xFFFFFF;
 
@@ -106,36 +87,17 @@ readseg(u_int va, u_int count, u_int offset)
 	count = (count+511)/512;
 
 	// kernel starts at sector 1
-	//offset++;
+	offset++;
 
 	// if this is too slow, we could read lots of sectors at a time.
 	// we'd write more to memory than asked, but it doesn't matter --
 	// we load in increasing order.
 	for(i=0; i<count; i++){
-
-		for(j = 0; j < 512; j++)
-		{
-			*((u_char*)va + j) = *((sect + offset*512 + i*512) + j);
-		}
-
+		readsect((u_char*)va, 1, offset+i);
 		va += 512;
 	}
 }
 
-/*
-void show_tag()
-{
-int i;
-	for(i = 0; i< 20; i++)
-	{
-		*cga++ = '#';
-		*cga++ = 7;
-	}
-
-
-}
-*/
-/*
 void
 notbusy(void)
 {
@@ -159,4 +121,3 @@ readsect(u_char *dst, u_int count, u_int offset)
 	insl(0x1F0, dst, count*512/4);
 }
 
-*/
